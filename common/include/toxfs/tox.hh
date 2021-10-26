@@ -28,13 +28,19 @@
 namespace toxfs
 {
 
-class tox
+class tox_t
 {
-    tox();
+    tox_t();
 
-    ~tox();
+    ~tox_t();
+
+    void start();
+
+    void stop();
 
 private:
+    void loop();
+
     struct impl_t;
     std::unique_ptr<impl_t> m_pImpl;
 };
