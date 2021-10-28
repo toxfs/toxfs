@@ -24,7 +24,7 @@ find_package(PkgConfig REQUIRED)
 find_package(Git)
 
 # toxcore
-pkg_check_modules(toxcore toxcore IMPORTED_TARGET REQUIRED)
+pkg_check_modules(toxcore toxcore>=0.2.10 IMPORTED_TARGET REQUIRED)
 add_library(toxcore::toxcore INTERFACE IMPORTED)
 target_link_libraries(toxcore::toxcore INTERFACE PkgConfig::toxcore)
 
