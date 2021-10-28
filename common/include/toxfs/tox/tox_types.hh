@@ -17,36 +17,33 @@
  * along with Toxfs.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <toxfs/version.hh>
-#include <toxfs_priv/cmake_version.hh>
+#pragma once
 
-#include <tox/tox.h>
+#include <cstdint>
+#include <cstddef>
+#include <array>
 
-namespace toxfs
+namespace toxfs::tox
 {
 
-version_t get_version()
-{
-    version_t v;
-    v.major = TOXFS_VERSION_MAJOR;
-    v.minor = TOXFS_VERSION_MINOR;
-    v.patch = TOXFS_VERSION_PATCH;
-#ifdef TOXFS_GIT_HASH
-    v.git_hash = TOXFS_GIT_HASH;
-#else
-    v.git_hash = "unknown";
-#endif
-    return v;
-}
+constexpr size_t k_public_key_size = 32;
 
-version_t get_toxcore_version()
-{
-    version_t v;
-    v.major = tox_version_major();
-    v.minor = tox_version_minor();
-    v.patch = tox_version_patch();
-    v.git_hash = "";
-    return v;
-}
+using public_key_t = std::array<std::byte, k_public_key_size>;
+enum class no_spam_t : uint32_t {};
+enum class checksum_t : uint16_t {};
 
-} // namespace Toxfs
+struct address_t
+{
+    public_key_t public_key;
+    no_spam_t nospam;
+    checksum_t checksum;
+};
+
+enum class connection_t
+{
+    none,
+    tcp,
+    udp
+};
+
+} // namespace toxfs::tox

@@ -17,36 +17,30 @@
  * along with Toxfs.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <toxfs/version.hh>
-#include <toxfs_priv/cmake_version.hh>
+#pragma once
 
-#include <tox/tox.h>
+#include <toxfs/tox/tox_types.hh>
 
-namespace toxfs
+#include <future>
+
+namespace toxfs::tox
 {
 
-version_t get_version()
+/**
+ * Interface for tox
+ */
+class tox_if
 {
-    version_t v;
-    v.major = TOXFS_VERSION_MAJOR;
-    v.minor = TOXFS_VERSION_MINOR;
-    v.patch = TOXFS_VERSION_PATCH;
-#ifdef TOXFS_GIT_HASH
-    v.git_hash = TOXFS_GIT_HASH;
-#else
-    v.git_hash = "unknown";
-#endif
-    return v;
-}
+public:
+    virtual ~tox_if() = default;
 
-version_t get_toxcore_version()
-{
-    version_t v;
-    v.major = tox_version_major();
-    v.minor = tox_version_minor();
-    v.patch = tox_version_patch();
-    v.git_hash = "";
-    return v;
-}
+    /**
+     * @brief get the connection status
+     * @return the status
+     */
+    virtual std::promise<connection_t> get_connection_status() = 0;
 
-} // namespace Toxfs
+};
+
+
+} // namespace toxfs::tox

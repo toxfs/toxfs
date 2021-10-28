@@ -28,7 +28,7 @@ namespace toxfs
 {
 
 /**
- * A very basic thread safe queue using a mutex and condition variable
+ * A very basic thread safe queue for passing messages
  */
 template<class T, std::size_t MaxSize>
 class message_queue
@@ -49,26 +49,35 @@ public:
 
     /**
      * @brief push a new message onto the queue
-     * @param[in] v - message
+     * @param[in] m - message
      */
-    void push(T const& v)
+    void push(T&& m)
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        queue_.push(v);
+        cond_pop_.wait(lock, [this]() { return queue_.size() < MaxSize; });
+        queue_.push(std::forward<T>(m));
         lock.unlock();
-        cond_var_.notify_one();
+        cond_push_.notify_one();
     }
 
     /**
-     * @brief push a new message onto the queue, moving it
-     * @param[in] v - message
+     * @brief push a new message onto the queue
+     * @param[in] m - message
+     * @param[in] timeout - the timeout duration
+     * @return true
      */
-    void push(T&& v)
+    template <class Rep, class Period>
+    bool push_timeout(T&& m, std::chrono::duration<Rep, Period> const& timeout)
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        queue_.push(std::forward<T>(v));
+        if (!cond_pop_.wait_for(lock, timeout, [this]() { return queue_.size() < MaxSize; }))
+        {
+            return false;
+        }
+        queue_.push(std::forward<T>(m));
         lock.unlock();
-        cond_var_.notify_one();
+        cond_push_.notify_one();
+        return true;
     }
 
     /**
@@ -78,23 +87,31 @@ public:
     T pop()
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        cond_var_.wait(lock, [this]() { return !queue_.empty(); });
-        T ret = std::move(queue_.front());
+        cond_push_.wait(lock, [this]() { return !queue_.empty(); });
+        T ret{std::move(queue_.front())};
         queue_.pop();
+        lock.unlock();
+        cond_pop_.notify_one();
         return ret;
     }
 
     /**
      * @brief get a new message off the queue with timeout
-     * @return optionaly a T if pop succeed
+     * @param[in] timeout - the timeout duration
+     * @return T if succeeded, none if timed out
      */
     template <class Rep, class Period>
-    std::optional<T> pop_timeout(std::chrono::duration<Rep, Period> const& rel_time)
+    std::optional<T> pop_timeout(std::chrono::duration<Rep, Period> const& timeout)
     {
         std::unique_lock<std::mutex> lock(mutex_);
-        cond_var_.wait_for(lock, rel_time, [this]() { return !queue_.empty(); });
-        T ret = std::move(queue_.front());
+        if (!cond_push_.wait_for(lock, timeout, [this]() { return !queue_.empty(); }))
+        {
+            return std::nullopt;
+        }
+        std::optional<T> ret{std::move(queue_.front())};
         queue_.pop();
+        lock.unlock();
+        cond_pop_.notify_one();
         return ret;
     }
 
@@ -107,9 +124,9 @@ public:
 
 private:
     mutable std::mutex mutex_{};
-    mutable std::condition_variable cond_var_{};
+    mutable std::condition_variable cond_push_{};
+    mutable std::condition_variable cond_pop_{};
     std::queue<T> queue_{};
 };
-
 
 } // namespace toxfs

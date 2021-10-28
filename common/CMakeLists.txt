@@ -21,9 +21,11 @@ add_library(toxfs_common)
 
 target_sources(toxfs_common PRIVATE
     include/toxfs/version.hh
-    include/toxfs/message_queue.hh
-    include/toxfs/scope_guard.hh
-    include/toxfs/tox.hh
+    include/toxfs/tox/tox.hh
+    include/toxfs/tox/tox_if.hh
+    include/toxfs/tox/tox_types.hh
+    include/toxfs/util/message_queue.hh
+    include/toxfs/util/scope_guard.hh
     include_private/toxfs_priv/cmake_version.hh.in
     src/version.cc
     src/tox.cc

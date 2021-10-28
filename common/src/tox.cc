@@ -17,16 +17,16 @@
  * along with Toxfs.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <toxfs/tox.hh>
-#include <toxfs/scope_guard.hh>
-#include <toxfs/message_queue.hh>
+#include <toxfs/tox/tox.hh>
+#include <toxfs/util/scope_guard.hh>
+#include <toxfs/util/message_queue.hh>
 
 #include <tox/tox.h>
 
 #include <stdexcept>
 #include <mutex>
 
-namespace toxfs
+namespace toxfs::tox
 {
 
 namespace detail

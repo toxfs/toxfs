@@ -23,16 +23,30 @@
  * Tox Interface
  */
 
+#include <toxfs/tox/tox_types.hh>
+#include <toxfs/tox/tox_if.hh>
+
 #include <memory>
 
-namespace toxfs
+namespace toxfs::tox
 {
 
-class tox_t
+struct config_t
+{
+    address_t local_address;
+
+};
+
+class tox_t : public std::enable_shared_from_this<tox_t>
 {
     tox_t();
 
     ~tox_t();
+
+    /**
+     * @brief Get tox_if
+     */
+    std::shared_ptr<tox_if> get_interface();
 
     void start();
 
@@ -45,4 +59,4 @@ private:
     std::unique_ptr<impl_t> m_pImpl;
 };
 
-} // namespace toxfs
+} // namespace toxfs::tox
