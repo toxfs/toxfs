@@ -22,3 +22,9 @@ set(BUILD_TOXFUSE ON CACHE BOOL "Build toxfuse")
 
 # Put built all executables in build/bin
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "CMake Build Type" FORCE)
+endif()
+
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")

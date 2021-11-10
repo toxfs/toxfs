@@ -20,6 +20,13 @@ include(CheckCXXCompilerFlag)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
+set(CMAKE_CXX_EXTENSIONS ON)
+
+
+set(TOXFS_DEBUG_FLAGS
+    $<$<CONFIG:Debug>:-Og>
+    $<$<CONFIG:Debug>:-g3>
+)
 
 add_compile_options(
     -Wall
@@ -29,4 +36,16 @@ add_compile_options(
     -Wshadow
     -Weffc++
     $<$<CONFIG:Debug>:-Werror>
+    ${TOXFS_DEBUG_FLAGS}
+)
+
+add_link_options(
+    ${TOXFS_DEBUG_FLAGS}
+)
+
+add_compile_definitions(
+    $<$<CONFIG:Debug>:TOXFS_DEBUG>
+    $<$<CONFIG:Debug>:TOXFS_LOG_COLOR>
+    # Uncomment to allow all toxcore logs to be logged
+    # $<$<CONFIG:Debug>:TOXFS_ALL_TOXCORE_LOGS>
 )
