@@ -53,7 +53,9 @@ After bootstrapping, toxfsd will display it's own Tox address:
 [tox/tox.cc:305] INFO: My tox address is: a42c8bedab...
 ```
 
-Add toxfsd as a friend and then you can send command: `toxfs-send <file>`.
+Add toxfsd as a friend, **it will only accept a friend request of the address provided on the command line**.
+
+After successfully friending, then you can send a message: `toxfs-send <file>`.
 
 ```
 # Absolute
@@ -65,6 +67,8 @@ toxfs-send myfile2.txt
 # Fails (currently only logs an error on the console)
 toxfs-send /mnt/notmyshared/notmyfile.txt
 ```
+
+This will cause toxfsd to initiate a file transfer with your tox client.
 
 ## Dependencies
 
