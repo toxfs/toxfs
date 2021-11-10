@@ -22,11 +22,11 @@
 #include "toxfs/tox/tox_error.hh"
 #include "toxfs/logging.hh"
 #include "toxfs/exception.hh"
+#include "toxfs/util/string_helpers.hh"
 
 #include <fmt/core.h>
 
-#include <string_view>
-#include <charconv>
+#include <algorithm>
 
 int main(int argc, char **argv)
 {
@@ -56,18 +56,8 @@ int main(int argc, char **argv)
     }
 
     toxfs::tox::tox_config_t config;
-    for (size_t i = 0; i < toxfs::tox::k_address_size; ++i)
-    {
-        uint8_t b = 0;
-        auto [ptr, ec] = std::from_chars(&addr_hex[2 * i], &addr_hex[2 * i + 2], b, 16);
-        if (ec != std::errc())
-        {
-            TOXFS_LOG_ERROR("Address contains non-hex characters: {}{}", addr_hex[i], addr_hex[i + 1]);
-            return 1;
-        }
-
-        config.HACK_friend_address.bytes[i] = std::byte{b};
-    }
+    auto friend_addr = toxfs::hex_string_to_binary(argv[1]);
+    std::copy_n(friend_addr.begin(), toxfs::tox::k_address_size, config.HACK_friend_address.bytes.begin());
 
     config.root_dir = std::filesystem::canonical(argv[2]);
     TOXFS_LOG_INFO("Serving files from directory: {}", config.root_dir.c_str());

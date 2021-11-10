@@ -24,6 +24,7 @@
 #include "toxfs/util/scope_guard.hh"
 #include "toxfs/util/message_queue.hh"
 #include "toxfs/util/compile_utils.hh"
+#include "toxfs/util/string_helpers.hh"
 #include "toxfs_priv/tox/tox_msg_types.hh"
 
 #include <tox/tox.h>
@@ -254,6 +255,49 @@ void impl_t::setup_callbacks()
 void impl_t::loop()
 {
     setup_callbacks();
+
+    struct bootstrap_node
+    {
+        std::string url;
+        uint16_t port;
+        std::string key;
+    };
+
+    // TODO: put this elsewhere
+    auto nodes =
+    {
+        bootstrap_node {
+            "tox.abilinski.com", 33445,
+            "10C00EB250C3233E343E2AEBA07115A5C28920E9C8D29492F6D00B29049EDC7E"
+        },
+        bootstrap_node {
+            "tox.initramfs.io", 33445,
+            "3F0A45A268367C1BEA652F258C85F4A66DA76BCAA667A49E770BCC4917AB6A25"
+        },
+    };
+
+    bool ok = false;
+    for (auto const& [url, port, key] : nodes)
+    {
+        TOXFS_LOG_INFO("Bootstrapping using: {}:{}", url, port);
+
+        auto key_bin = hex_string_to_binary(key);
+        TOX_ERR_BOOTSTRAP err;
+        if (tox_bootstrap(tox_, url.c_str(), port, reinterpret_cast<uint8_t*>(key_bin.data()), &err))
+        {
+            ok = true;
+        }
+        else
+        {
+            TOXFS_LOG_WARNING("Bootstrapping with {}:{} failed: {}", url, port, err);
+        }
+    }
+
+    if (!ok)
+    {
+        TOXFS_LOG_WARNING("Bootstrapping failed on all nodes! Only local will work.");
+    }
+
 
     address_t addr;
     tox_self_get_address(tox_, reinterpret_cast<uint8_t*>(&addr));

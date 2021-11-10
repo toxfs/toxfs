@@ -27,6 +27,7 @@ target_sources(toxfs_common PRIVATE
     include/toxfs/tox/tox_if.hh
     include/toxfs/tox/tox_types.hh
     include/toxfs/tox/tox_error.hh
+    include/toxfs/util/string_helpers.hh
     include/toxfs/util/compile_utils.hh
     include/toxfs/util/message_queue.hh
     include/toxfs/util/scope_guard.hh
@@ -35,6 +36,7 @@ target_sources(toxfs_common PRIVATE
     include_private/toxfs_priv/cmake_version.hh.in
     src/version.cc
     src/logging.cc
+    src/util/string_helpers.cc
     src/tox/tox.cc
     src/tox/tox_error.cc
 )
