@@ -17,20 +17,8 @@
  * along with Toxfs.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "toxfs/version.hh"
-#include "toxfs/logging.hh"
+#pragma once
 
-#include <fmt/core.h>
+#include "toxfs/tox/tox_types.hh"
 
-int main()
-{
-    {
-        auto [major, minor, patch, hash] = toxfs::get_version();
-        TOXFS_LOG_INFO("version: {}.{}.{} {}\n", major, minor, patch, hash);
-    }
-    {
-        auto [major, minor, patch, hash] = toxfs::get_toxcore_version();
-        TOXFS_LOG_INFO("toxcore version: {}.{}.{} {}\n", major, minor, patch, hash);
-    }
-    return 0;
-}
+#include <array>

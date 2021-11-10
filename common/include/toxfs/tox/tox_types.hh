@@ -27,16 +27,42 @@ namespace toxfs::tox
 {
 
 constexpr size_t k_public_key_size = 32;
+constexpr size_t k_nospam_size = 4;
+constexpr size_t k_checksum_size = 2;
+constexpr size_t k_address_size = k_public_key_size + k_nospam_size + k_checksum_size;
 
 using public_key_t = std::array<std::byte, k_public_key_size>;
-enum class no_spam_t : uint32_t {};
-enum class checksum_t : uint16_t {};
+using nospam_t = std::array<std::byte, k_nospam_size>;
+using checksum_t = std::array<std::byte, k_checksum_size>;
 
 struct address_t
 {
-    public_key_t public_key;
-    no_spam_t nospam;
-    checksum_t checksum;
+    std::array<std::byte, k_address_size> bytes;
+
+    constexpr public_key_t public_key() const noexcept
+    {
+        return subarr_<0, k_public_key_size>();
+    }
+
+    constexpr nospam_t nospam() const noexcept
+    {
+        return subarr_<k_public_key_size, k_nospam_size>();
+    }
+
+    constexpr checksum_t checksum() const noexcept
+    {
+        return subarr_<k_public_key_size + k_nospam_size, k_checksum_size>();
+    }
+
+private:
+    template<size_t Start, size_t Size>
+    constexpr std::array<std::byte, Size> subarr_() const noexcept
+    {
+        std::array<std::byte, Size> ret;
+        for (size_t i = Start; i < Start + Size; ++i)
+            ret[i - Start] = bytes[i];
+        return ret;
+    }
 };
 
 enum class connection_t

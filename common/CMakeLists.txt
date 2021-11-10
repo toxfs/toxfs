@@ -26,14 +26,17 @@ target_sources(toxfs_common PRIVATE
     include/toxfs/tox/tox.hh
     include/toxfs/tox/tox_if.hh
     include/toxfs/tox/tox_types.hh
+    include/toxfs/tox/tox_error.hh
     include/toxfs/util/compile_utils.hh
     include/toxfs/util/message_queue.hh
     include/toxfs/util/scope_guard.hh
     include/toxfs/util/filename.hh
+    include_private/toxfs_priv/tox/tox_msg_types.hh
     include_private/toxfs_priv/cmake_version.hh.in
     src/version.cc
-    src/tox.cc
     src/logging.cc
+    src/tox/tox.cc
+    src/tox/tox_error.cc
 )
 
 target_include_directories(toxfs_common

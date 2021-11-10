@@ -17,8 +17,8 @@
  * along with Toxfs.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <toxfs/version.hh>
-#include <toxfs_priv/cmake_version.hh>
+#include "toxfs/version.hh"
+#include "toxfs_priv/cmake_version.hh"
 
 #include <tox/tox.h>
 

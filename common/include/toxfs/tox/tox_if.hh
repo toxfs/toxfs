@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <toxfs/tox/tox_types.hh>
+#include "toxfs/tox/tox_types.hh"
 
 #include <future>
 

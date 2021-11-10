@@ -23,25 +23,28 @@
  * Tox Interface
  */
 
-#include <toxfs/tox/tox_types.hh>
-#include <toxfs/tox/tox_if.hh>
+#include "toxfs/tox/tox_types.hh"
+#include "toxfs/tox/tox_if.hh"
 
 #include <memory>
+#include <filesystem>
 
 namespace toxfs::tox
 {
 
-struct config_t
+struct tox_config_t
 {
-    address_t local_address;
-
+    address_t local_address{};
+    address_t HACK_friend_address{};
+    std::filesystem::path root_dir{};
 };
 
 class tox_t : public std::enable_shared_from_this<tox_t>
 {
-    tox_t();
+public:
+    explicit tox_t(tox_config_t const& config);
 
-    ~tox_t();
+    ~tox_t() noexcept;
 
     /**
      * @brief Get tox_if
@@ -52,10 +55,8 @@ class tox_t : public std::enable_shared_from_this<tox_t>
 
     void stop();
 
-private:
-    void loop();
-
     struct impl_t;
+private:
     std::unique_ptr<impl_t> m_pImpl;
 };
 
