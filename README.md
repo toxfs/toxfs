@@ -84,5 +84,5 @@ TODO: mention downloaded dependencies
 GPG keys used to sign commits:
 
 ```
-Jack Guo - CA78E66A15436ADA83E31E011CF19C2F3DD00269
+Jack Guo - CA78 E66A 1543 6ADA 83E3  1E01 1CF1 9C2F 3DD0 0269
 ```
