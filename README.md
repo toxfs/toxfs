@@ -35,6 +35,37 @@ cmake --install build
 
 TODO: instructions for downloading dependencies
 
+
+## Usage (Proof of Concept)
+
+**WARNING**: This functionality is a experimental hack, use at your own risk.
+
+Currently toxfsd can currently connect to a client and initiate a file transfer based on a message.
+
+To get started run toxfsd with your Tox address and a directory to serve:
+
+```bash
+$ toxfsd 0E831AAF... /mnt/myshared
+```
+
+After bootstrapping, toxfsd will display it's own Tox address:
+```
+[tox/tox.cc:305] INFO: My tox address is: a42c8bedab...
+```
+
+Add toxfsd as a friend and then you can send command: `toxfs-send <file>`.
+
+```
+# Absolute
+toxfs-send /mnt/myshared/myfile.txt
+
+# Relative, implies /mnt/myshared/myfile2.txt
+toxfs-send myfile2.txt
+
+# Fails (currently only logs an error on the console)
+toxfs-send /mnt/notmyshared/notmyfile.txt
+```
+
 ## Dependencies
 
 * Build and Runtime
