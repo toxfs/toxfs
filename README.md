@@ -77,3 +77,12 @@ toxfs-send /mnt/notmyshared/notmyfile.txt
   * fmtlib >= 8
 
 TODO: mention downloaded dependencies
+
+
+## GPG fingerprints
+
+GPG keys used to sign commits:
+
+```
+Jack Guo - CA78E66A15436ADA83E31E011CF19C2F3DD00269
+```
