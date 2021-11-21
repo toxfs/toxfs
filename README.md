@@ -33,8 +33,22 @@ cmake --build build
 cmake --install build
 ```
 
-TODO: instructions for downloading dependencies
+### Downloading Dependencies
 
+By default the build will download dependencies as needed from the web. This only happens for
+dependencies that support it (marked as downloadable in [Dependencies](#Dependencies)).
+
+This is controlled by the `DOWNLOAD_DEPS` variable in CMake:
+```sh
+# Never download deps, always use the system version
+cmake -DDOWNLOAD_DEPS=NEVER ...
+
+# Try the system version first and download upon fail (default)
+cmake -DDOWNLOAD_DEPS=AUTO ...
+
+# Always download
+cmake -DDOWNLOAD_DEPS=ALWAYS ...
+```
 
 ## Usage (Proof of Concept)
 
@@ -78,10 +92,8 @@ This will cause toxfsd to initiate a file transfer with your tox client.
 * Build Only
   * A C++17 compliant compiler (GCC > 8 or Clang > 9)
   * CMake >= 3.16
-  * fmtlib >= 8
-
-TODO: mention downloaded dependencies
-
+  * fmtlib >= 8.0.1 (downloadable)
+  * microsoft-gsl >= 3.1.0 (downloadable)
 
 ## GPG fingerprints
 
