@@ -29,5 +29,5 @@ target_include_directories(toxfuse PRIVATE
 
 target_link_libraries(toxfuse PRIVATE
     toxfs_common
-    fmt::fmt
+    toxfsdep::fmt
 )

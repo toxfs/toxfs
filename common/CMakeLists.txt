@@ -54,7 +54,7 @@ target_link_libraries(toxfs_common
     PUBLIC
 
     PRIVATE
-    fmt::fmt
+    toxfsdep::fmt
     toxcore::toxcore
 )
 

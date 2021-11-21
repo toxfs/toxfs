@@ -34,7 +34,7 @@ add_compile_options(
     -Wpedantic
     -Wconversion
     -Wshadow
-    -Weffc++
+    $<$<CONFIG:Debug>:-Weffc++>
     $<$<CONFIG:Debug>:-Werror>
     ${TOXFS_DEBUG_FLAGS}
 )

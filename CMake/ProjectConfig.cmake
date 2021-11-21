@@ -28,3 +28,21 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+
+# DOWNLOAD_DEPS
+# Allows choosing whether to automatically download a dependency
+# if the system version is not available or too old.
+#
+# This is only for dependencies that support it. Currently this is
+# just header-only libraries
+#
+# NEVER - Always use the system version, build fails if not found
+# AUTO - The default, tries to find the system version, on failure it downloads.
+# ALWAYS - Always download, without checking for the system one.
+set(_DOWNLOAD_DEPS_OPTS NEVER AUTO ALWAYS)
+set(DOWNLOAD_DEPS AUTO CACHE STRING
+    "If dependencies should be downloaded from the web")
+set_property(CACHE DOWNLOAD_DEPS PROPERTY STRINGS ${_DOWNLOAD_DEPS_OPTS})
+if(NOT DOWNLOAD_DEPS IN_LIST _DOWNLOAD_DEPS_OPTS)
+    message(FATAL_ERROR "Invalid value of DOWNLOAD_DEPS: ${DOWNLOAD_DEPS}")
+endif()
