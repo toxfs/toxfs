@@ -30,4 +30,5 @@ target_include_directories(toxfsd PRIVATE
 target_link_libraries(toxfsd PRIVATE
     toxfs_common
     toxfsdep::fmt
+    toxfsdep::GSL
 )

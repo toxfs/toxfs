@@ -21,7 +21,6 @@
 #include "toxfs/tox/tox_error.hh"
 #include "toxfs/exception.hh"
 #include "toxfs/logging.hh"
-#include "toxfs/util/scope_guard.hh"
 #include "toxfs/util/message_queue.hh"
 #include "toxfs/util/compile_utils.hh"
 #include "toxfs/util/string_helpers.hh"
@@ -30,6 +29,8 @@
 #include <tox/tox.h>
 
 #include <fmt/ranges.h>
+
+#include <gsl/gsl_util>
 
 #include <string_view>
 #include <stdexcept>
@@ -143,14 +144,6 @@ struct tox_t::impl_t
     template <typename ...Args>
     struct callback_t<void(tox_t::impl_t::*)(Args...)>
     {
-        static const size_t nargs = sizeof...(Args);
-
-        template <size_t i>
-        struct arg
-        {
-            typedef typename std::tuple_element<i, std::tuple<Args...>>::type type;
-        };
-
         template<void(tox_t::impl_t::*mem_fn)(Args...)>
         static void callback(Tox* tox, Args... args, void *user_data) noexcept
         {
@@ -187,7 +180,8 @@ impl_t::impl_t(tox_config_t const& config)
     if (!options)
         throw TOXFS_EXCEPTION(tox::tox_error, "tox_options_new failed", options_err);
 
-    scope_guard guard([options]() {
+    auto free_options = gsl::finally([options]()
+    {
         tox_options_free(options);
     });
 

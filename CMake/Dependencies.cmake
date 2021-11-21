@@ -72,6 +72,28 @@ if(NOT fmt_FOUND AND _do_download)
     set(TOXFS_fmtlib_DEP_TYPE "Downloaded (${TOXFS_FMT_DOWNLOAD_VERSION})")
 endif()
 
+# ================================
+# gsl
+# ================================
+add_library(toxfsdep::GSL INTERFACE IMPORTED)
+if(_do_find)
+    find_package(Microsoft.GSL 3.1.0 CONFIG ${_find_args})
+    if(Microsoft.GSL_FOUND)
+        target_link_libraries(toxfsdep::GSL INTERFACE Microsoft.GSL::GSL)
+        set(TOXFS_GSL_DEP_TYPE "System (${Microsoft.GSL_VERSION})")
+    endif()
+endif()
+if(NOT Microsoft.GSL_FOUND AND _do_download)
+    set(TOXFS_GSL_DOWNLOAD_VERSION 3.1.0)
+    FetchContent_Declare(GSL
+        GIT_REPOSITORY https://github.com/microsoft/GSL
+        GIT_TAG "v${TOXFS_GSL_DOWNLOAD_VERSION}"
+    )
+    FetchContent_MakeAvailable(GSL)
+    target_link_libraries(toxfsdep::GSL INTERFACE GSL)
+    set(TOXFS_GSL_DEP_TYPE "Downloaded (${TOXFS_GSL_DOWNLOAD_VERSION})")
+endif()
+
 # Print out all dependencies
 message(STATUS "Toxfs Dependencies Summary:")
 foreach(dep IN ITEMS toxcore fmtlib GSL)
