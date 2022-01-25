@@ -72,8 +72,10 @@ After bootstrapping, toxfsd will display it's own Tox address:
 ```
 
 Add toxfsd as a friend, **it will only accept a friend request of the address provided on the command line**.
+If you provided a savedata path earlier, you can now send the message `save` to toxfsd to tell it to save
+it's data.
 
-After successfully friending, then you can send a message: `send <path>`. The path can be either a file
+Now that toxfsd is ready, you can tell it to send a file with: `send <path>`. The path can be either a file
 or a directory specified as a absolute or relative path to the share. When the path is a directory
 all the contents in the directory and subdirectories will be sent.
 
