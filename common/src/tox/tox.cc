@@ -24,7 +24,9 @@
 #include "toxfs/util/message_queue.hh"
 #include "toxfs/util/compile_utils.hh"
 #include "toxfs/util/string_helpers.hh"
-#include "toxfs_priv/tox/tox_msg_types.hh"
+
+#include "toxfs_priv/tox/tox_if_impl.hh"
+#include "toxfs_priv/tox/tox_if_convert.hh"
 
 #include <tox/tox.h>
 
@@ -34,16 +36,16 @@
 
 #include <string_view>
 #include <stdexcept>
-#include <mutex>
 #include <chrono>
 #include <thread>
 #include <cassert>
-#include <filesystem>
-#include <optional>
 #include <fstream>
-
-// TODO: Remove this
-namespace fs = std::filesystem;
+#include <memory>
+#include <vector>
+#include <cstring>
+#include <unordered_map>
+#include <queue>
+#include <optional>
 
 namespace toxfs::tox
 {
@@ -60,7 +62,7 @@ constexpr auto k_toxcore_min_level = TOX_LOG_LEVEL_TRACE;
 constexpr auto k_toxcore_min_level = TOX_LOG_LEVEL_INFO;
 #endif
 
-void log_callback(Tox *, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func,
+static void log_callback(Tox *, TOX_LOG_LEVEL level, const char *file, uint32_t line, const char *func,
         const char *message, void *) noexcept
 {
     if (level < k_toxcore_min_level)
@@ -78,6 +80,21 @@ void log_callback(Tox *, TOX_LOG_LEVEL level, const char *file, uint32_t line, c
 
     TOXFS_LOG_DEBUG("[toxcore {} {}:{}] {}: {}", func, file, line, level_str, message);
 }
+
+template <typename T, typename ErrEnum>
+void set_promise_from_tox(std::promise<T>& promise_ref, T value, ErrEnum err, const char* err_msg)
+{
+    if (!err)
+    {
+        promise_ref.set_value(value);
+    }
+    else
+    {
+        promise_ref.set_exception(std::make_exception_ptr(
+                TOXFS_EXCEPTION(tox::tox_error, err_msg, err)));
+    }
+}
+
 }  // namespace detail
 
 struct tox_t::impl_t
@@ -86,12 +103,22 @@ struct tox_t::impl_t
     Tox *tox_ = nullptr;
 
     tox_config_t config_;
-    std::optional<uint32_t> HACK_friend_number{};
-    std::optional<uint32_t> HACK_file_number{};
-    std::optional<std::ifstream> HACK_file{};
-    std::vector<uint8_t> HACK_buffer{};
+    std::shared_ptr<tox_if_impl> if_impl_ptr_;
+    send_queue_t& send_queue_ref_;
+    recv_queue_t& recv_queue_ref_;
 
-    impl_t(tox_config_t const& config);
+    struct chunk_requests_t
+    {
+        long num_in_flight{0};
+        long max_in_flight{16};
+        std::chrono::steady_clock::time_point last_update{std::chrono::steady_clock::now()};
+        std::queue<file_chunk_request_t> requests;
+    };
+    std::unordered_map<unique_file_id_t, chunk_requests_t> chunk_requests_;
+
+    std::thread loop_thread_;
+
+    explicit impl_t(tox_config_t const& config);
     ~impl_t() noexcept;
 
     impl_t(impl_t const&) = delete;
@@ -136,6 +163,22 @@ struct tox_t::impl_t
 
     void on_file_chunk(uint32_t fr_num, uint32_t file_num, uint64_t position, const uint8_t *data, size_t data_len);
 
+    /* Send Handlers */
+
+    void send_msg_(send_msg_get_conn_status_t&& msg);
+    void send_msg_(send_msg_accept_fr_req_t&& msg);
+    void send_msg_(send_msg_fr_message_t&& msg);
+    void send_msg_(send_msg_file_send_t&& msg);
+    void send_msg_(send_msg_file_control_t&& msg);
+    void send_msg_(send_msg_file_chunk_t&& msg);
+    void send_msg_(send_msg_savedata_t&& msg);
+
+    /* Misc */
+
+    void report_file_err_(unique_file_id_t id, tox_error error);
+
+    void check_chunk_requests_(std::optional<unique_file_id_t> id);
+
     /**
      * Helper for binding a tox callback by passing this of impl_t as user_data
      * and then cast it back and call the corresponding member function after.
@@ -173,12 +216,34 @@ using impl_t = tox_t::impl_t;
 
 impl_t::impl_t(tox_config_t const& config)
     : config_(config)
+    , if_impl_ptr_(std::make_shared<tox_if_impl>())
+    , send_queue_ref_(if_impl_ptr_->get_send_queue())
+    , recv_queue_ref_(if_impl_ptr_->get_recv_queue())
 {
     TOX_ERR_OPTIONS_NEW options_err;
     Tox_Options *options = nullptr;
     options = tox_options_new(&options_err);
     if (!options)
         throw TOXFS_EXCEPTION(tox::tox_error, "tox_options_new failed", options_err);
+
+    std::vector<char> savedata;
+    if (!config_.save_file.empty())
+    {
+        if (std::filesystem::exists(config_.save_file))
+        {
+            std::ifstream s{config_.save_file, std::ios_base::in | std::ios_base::binary};
+            s.seekg(0, std::ios_base::end);
+            savedata.resize(static_cast<size_t>(s.tellg()));
+            s.seekg(0, std::ios_base::beg);
+            s.read(savedata.data(), static_cast<std::streamsize>(savedata.size()));
+            tox_options_set_savedata_data(options, reinterpret_cast<uint8_t*>(savedata.data()), savedata.size());
+            tox_options_set_savedata_type(options, TOX_SAVEDATA_TYPE_TOX_SAVE);
+        }
+        else
+        {
+            TOXFS_LOG_WARNING("tox savedata file does not exist ({}), save to create it", config_.save_file.native());
+        }
+    }
 
     auto free_options = gsl::finally([options]()
     {
@@ -303,11 +368,33 @@ void impl_t::loop()
         fmt::join(addr.nospam(), ""),
         fmt::join(addr.checksum(), ""));
 
+    auto name = std::string_view{"toxfs daemon"};
+    tox_self_set_name(tox_, reinterpret_cast<uint8_t const*>(name.data()), name.size(), nullptr);
+
+    std::chrono::steady_clock::time_point start_time;
     while (true)
     {
-        auto start = std::chrono::steady_clock::now();
+        start_time = std::chrono::steady_clock::now();
         tox_iterate(tox_, this);
-        std::this_thread::sleep_until(start + std::chrono::milliseconds{tox_iteration_interval(tox_)});
+        auto end_time = start_time + std::chrono::milliseconds{tox_iteration_interval(tox_)};
+        check_chunk_requests_(std::nullopt);
+        auto opt_msg = send_queue_ref_.pop_until_time(end_time);
+        if (opt_msg)
+        {
+            try
+            {
+                std::visit([this](auto&& msg) { send_msg_(std::move(msg)); }, *opt_msg);
+            }
+            catch (toxfs::exception const& e)
+            {
+                TOXFS_LOG_ERROR("Exception while sending message: {}", e.what());
+            }
+            catch (std::exception const& e)
+            {
+                TOXFS_LOG_ERROR("Exception while sending message: {}", e.what());
+            }
+        }
+        std::this_thread::sleep_until(end_time);
     }
 }
 
@@ -317,24 +404,7 @@ void impl_t::on_friend_request(const uint8_t *public_key, const uint8_t *msg, si
     std::string_view msg_str{reinterpret_cast<const char*>(msg), msg_len};
     TOXFS_LOG_DEBUG("on_friend_request from {:x}: {} (len = {})", fmt::join(public_key_arr, ""), msg_str, msg_len);
 
-    if (public_key_arr == config_.HACK_friend_address.public_key())
-    {
-        TOXFS_LOG_INFO("Accepting friend request!");
-        TOX_ERR_FRIEND_ADD friend_add_error;
-        uint32_t fr_num = tox_friend_add_norequest(tox_, public_key, &friend_add_error);
-        if (friend_add_error)
-        {
-            TOXFS_LOG_ERROR("Error adding friend from request: {}", friend_add_error);
-            return;
-        }
-
-        TOXFS_LOG_INFO("Added friend as number: {}", fr_num);
-        HACK_friend_number = fr_num;
-    }
-    else
-    {
-        TOXFS_LOG_WARNING("Friend request does not match expected key, ignoring");
-    }
+    recv_queue_ref_.push(recv_msg_fr_request_t { public_key_arr, std::string{msg_str} });
 }
 
 void impl_t::on_friend_msg(uint32_t fr_num, TOX_MESSAGE_TYPE type, const uint8_t *msg, size_t msg_len)
@@ -342,75 +412,30 @@ void impl_t::on_friend_msg(uint32_t fr_num, TOX_MESSAGE_TYPE type, const uint8_t
     std::string_view msg_str{reinterpret_cast<const char*>(msg), msg_len};
     TOXFS_LOG_DEBUG("on_friend_msg from #{}: (type {}) {} (len = {})", fr_num, int(type), msg_str, msg_len);
 
-    if (msg_str.size() >= 10 && msg_str.substr(0, 10) == "toxfs-send")
-    {
-        auto filename_start = msg_str.find_first_not_of(" \t", 10);
-        if (filename_start == std::string_view::npos)
-        {
-            TOXFS_LOG_WARNING("Send command did not specify file!");
-            return;
-        }
-
-        auto file = fs::path(msg_str.substr(filename_start));
-
-        if (file.is_relative())
-            file = config_.root_dir / file;
-
-        if (!fs::exists(file))
-        {
-            TOXFS_LOG_ERROR("{} does not exist!", file.c_str());
-            return;
-        }
-
-        file = fs::canonical(file);
-
-        TOXFS_LOG_INFO("Request to send file: {}", file.c_str());
-
-        std::error_code ec;
-        auto rel_filename = fs::relative(file, config_.root_dir, ec);
-        if (ec || *rel_filename.begin() == "..")
-        {
-            TOXFS_LOG_ERROR("file to send is not in root dir: {} (root = {}", file.c_str(), config_.root_dir.c_str());
-            return;
-        }
-
-        assert(HACK_friend_number);
-
-        HACK_file = std::ifstream{file, std::ios_base::in | std::ios_base::binary};
-
-        TOX_ERR_FILE_SEND error;
-        auto name = file.filename().generic_string();
-        auto file_num = tox_file_send(tox_, *HACK_friend_number, TOX_FILE_KIND_DATA,
-            fs::file_size(file), nullptr,
-            reinterpret_cast<const uint8_t*>(name.c_str()), name.size(), &error);
-        if (error)
-        {
-            TOXFS_LOG_ERROR("Failed to initiate file send: {}", error);
-            return;
-        }
-        HACK_file_number = file_num;
-    }
-    else
-    {
-        TOXFS_LOG_INFO("Received non-command message: {}", msg_str);
-    }
+    recv_queue_ref_.push(recv_msg_fr_message_t { friend_id_t{fr_num}, std::string{msg_str} });
 }
 
 void impl_t::on_friend_name(uint32_t fr_num, const uint8_t *name, size_t name_len)
 {
     std::string_view name_str{reinterpret_cast<const char*>(name), name_len};
-    TOXFS_LOG_DEBUG("on_friend_msg from #{}: {} (len = {})", fr_num, name_str, name_len);
+    TOXFS_LOG_DEBUG("on_friend_name from #{}: {} (len = {})", fr_num, name_str, name_len);
+
+    recv_queue_ref_.push(recv_msg_fr_name_t { friend_id_t{fr_num}, std::string{name_str} });
 }
 
 void impl_t::on_friend_status(uint32_t fr_num, const uint8_t *msg, size_t msg_len)
 {
     std::string_view msg_str{reinterpret_cast<const char*>(msg), msg_len};
     TOXFS_LOG_DEBUG("on_friend_status from #{}: {} (len = {})", fr_num, msg_str, msg_len);
+
+    recv_queue_ref_.push(recv_msg_fr_status_t { friend_id_t{fr_num}, std::string{msg_str} });
 }
 
 void impl_t::on_friend_conn_status(uint32_t fr_num, TOX_CONNECTION conn_status)
 {
-    TOXFS_LOG_DEBUG("on_friend_conn_status from #{}: {})", fr_num, int(conn_status));
+    TOXFS_LOG_DEBUG("on_friend_conn_status from #{}: {}", fr_num, int(conn_status));
+
+    // TODO
 }
 
 void impl_t::on_group_invite(uint32_t fr_num, TOX_CONFERENCE_TYPE type, const uint8_t* cookie, size_t cookie_len)
@@ -445,6 +470,8 @@ void impl_t::on_group_peer_name(uint32_t gr_num, uint32_t peer_num, const uint8_
 void impl_t::on_file_control(uint32_t fr_num, uint32_t file_num, TOX_FILE_CONTROL file_ctrl)
 {
     TOXFS_LOG_DEBUG("on_file_control from #{}: file #{} ctrl {}", fr_num, file_num, int(file_ctrl));
+
+    recv_queue_ref_.push(recv_msg_file_control_t { unique_file_id_t{fr_num, file_num}, from_tox::convert(file_ctrl) });
 }
 
 void impl_t::on_file_recv(uint32_t fr_num, uint32_t file_num, uint32_t kind, uint64_t file_size,
@@ -453,57 +480,169 @@ void impl_t::on_file_recv(uint32_t fr_num, uint32_t file_num, uint32_t kind, uin
     std::string_view filename_str{reinterpret_cast<const char*>(filename), filename_len};
     TOXFS_LOG_DEBUG("on_file_recv from #{}: file #{} {} size {} kind {}", fr_num, file_num,
         filename_str, file_size, kind);
+
+    if (kind == TOX_FILE_KIND_AVATAR)
+    {
+        TOXFS_LOG_DEBUG("on_file_recv ignoring avatar file");
+        return;
+    }
+
+    recv_queue_ref_.push(recv_msg_file_receive_t { unique_file_id_t{fr_num, file_num}, {std::string{filename_str}, file_size} });
 }
 
 void impl_t::on_file_chunk_request(uint32_t fr_num, uint32_t file_num, uint64_t position, size_t length)
 {
-    TOXFS_LOG_DEBUG("on_file_chunk_request from #{}: file #{} position {} len {}", fr_num, file_num, position, length);
+    // TOXFS_LOG_DEBUG("on_file_chunk_request from #{}: file #{} position {} len {}", fr_num, file_num, position, length);
 
-    if (file_num != HACK_file_number)
-    {
-        TOXFS_LOG_ERROR("Chunk request for different file: {}", file_num);
-        return;
-    }
+    unique_file_id_t file_id{fr_num, file_num};
 
-    if (!HACK_file)
-    {
-        TOXFS_LOG_ERROR("Chunk request with no valid file!");
-        return;
-    }
+    auto& req = chunk_requests_[file_id];
 
-    if (length == 0)
-    {
-        TOXFS_LOG_INFO("Done Transferring (Probably...)");
-        HACK_buffer.clear();
-        HACK_file_number = std::nullopt;
-        HACK_file = std::nullopt;
-        return;
-    }
+    req.requests.push(file_chunk_request_t{position, length});
+    req.last_update = std::chrono::steady_clock::now();
 
-    auto& stream = *HACK_file;
-    stream.seekg(position);
-
-    HACK_buffer.clear();
-    HACK_buffer.resize(length);
-    stream.read(reinterpret_cast<char*>(HACK_buffer.data()), length);
-
-    TOX_ERR_FILE_SEND_CHUNK error;
-    bool success = tox_file_send_chunk(tox_, fr_num, file_num, position, HACK_buffer.data(), length, &error);
-    if (!success)
-    {
-        TOXFS_LOG_ERROR("Failed to send chunk ({}, {}): {}", position, length, error);
-        return;
-    }
+    check_chunk_requests_(file_id);
 }
 
 void impl_t::on_file_chunk(uint32_t fr_num, uint32_t file_num, uint64_t position, const uint8_t *data, size_t data_len)
 {
-    TOXFS_LOG_DEBUG("on_file_chunk from #{}: file #{} position {} len {}", fr_num, file_num, position, data_len);
-    (void)data;
+    // TOXFS_LOG_DEBUG("on_file_chunk from #{}: file #{} position {} len {}", fr_num, file_num, position, data_len);
+
+    buffer_t buf{data_len};
+    std::memcpy(buf.data(), data, data_len);
+    buf.set_size(data_len);
+    recv_queue_ref_.push(recv_msg_file_chunk_t { unique_file_id_t{fr_num, file_num}, {position, std::move(buf)} });
+}
+
+void impl_t::send_msg_(send_msg_get_conn_status_t&& /*msg*/)
+{
+    // TODO
+}
+
+void impl_t::send_msg_(send_msg_accept_fr_req_t&& msg)
+{
+    TOX_ERR_FRIEND_ADD err;
+    uint32_t fr_id = tox_friend_add_norequest(tox_, reinterpret_cast<uint8_t const*>(msg.public_key.data()), &err);
+
+    detail::set_promise_from_tox(msg.promise, friend_id_t{fr_id}, err, "tox_friend_add_norequest failed");
+}
+
+void impl_t::send_msg_(send_msg_fr_message_t&& msg)
+{
+    TOX_ERR_FRIEND_SEND_MESSAGE err = TOX_ERR_FRIEND_SEND_MESSAGE_OK;
+    auto msg_id = tox_friend_send_message(tox_, msg.id.id, TOX_MESSAGE_TYPE_NORMAL,
+            reinterpret_cast<uint8_t const*>(msg.message.data()), msg.message.size(), &err);
+
+    detail::set_promise_from_tox(msg.promise, message_id_t{msg_id}, err, "tox_friend_send_message failed");
+}
+
+void impl_t::send_msg_(send_msg_file_send_t&& msg)
+{
+    TOX_ERR_FILE_SEND err = TOX_ERR_FILE_SEND_OK;
+    auto file_id = tox_file_send(tox_, msg.id.id, TOX_FILE_KIND_DATA, msg.info.filesize, nullptr,
+            reinterpret_cast<uint8_t const*>(msg.info.filename.data()), msg.info.filename.size(), &err);
+
+    auto uniq_id = unique_file_id_t{msg.id, file_id_t{file_id}};
+    detail::set_promise_from_tox(msg.promise, uniq_id, err, "tox_file_send failed");
+}
+
+void impl_t::send_msg_(send_msg_file_control_t&& msg)
+{
+    TOX_ERR_FILE_CONTROL err = TOX_ERR_FILE_CONTROL_OK;
+    bool ok = tox_file_control(tox_, msg.id.friend_id.id, msg.id.file_id.id, to_tox::convert(msg.control), &err);
+
+    if (!ok)
+    {
+        report_file_err_(msg.id, TOXFS_EXCEPTION(tox::tox_error, "tox_file_control failed", err));
+    }
+}
+
+void impl_t::send_msg_(send_msg_file_chunk_t&& msg)
+{
+    TOX_ERR_FILE_SEND_CHUNK err = TOX_ERR_FILE_SEND_CHUNK_OK;
+    bool ok = tox_file_send_chunk(tox_, msg.id.friend_id.id, msg.id.file_id.id, msg.chunk.position,
+            reinterpret_cast<uint8_t const*>(msg.chunk.data.data()), msg.chunk.data.size(), &err);
+
+    if (!ok)
+    {
+        report_file_err_(msg.id, TOXFS_EXCEPTION(tox::tox_error, "tox_file_send_chunk failed", err));
+    }
+
+    auto& req = chunk_requests_[msg.id];
+    req.last_update = std::chrono::steady_clock::now();
+    req.num_in_flight--;
+
+    check_chunk_requests_(msg.id);
+}
+
+void impl_t::send_msg_(send_msg_savedata_t&&)
+{
+    std::vector<char> data;
+    data.resize(tox_get_savedata_size(tox_));
+
+    tox_get_savedata(tox_, reinterpret_cast<uint8_t*>(data.data()));
+
+    std::ofstream s{config_.save_file, std::ios_base::out | std::ios_base::binary | std::ios_base::trunc};
+    s.write(data.data(), static_cast<std::streamoff>(data.size()));
+
+    TOXFS_LOG_INFO("Successfully saved tox savedata to {}", config_.save_file.native());
+}
+
+void impl_t::report_file_err_(unique_file_id_t id, tox_error error)
+{
+    recv_queue_ref_.push(recv_msg_file_error_t{id, std::move(error)});
+}
+
+void impl_t::check_chunk_requests_(std::optional<unique_file_id_t> opt_id)
+{
+    if (opt_id)
+    {
+        auto& file_id = *opt_id;
+        auto& [num_in_flight, max_in_flight, last_update, requests] = chunk_requests_[file_id];
+
+        while (num_in_flight < max_in_flight && !requests.empty())
+        {
+            recv_queue_ref_.push(recv_msg_file_chunk_request_t{ file_id, requests.front() });
+            requests.pop();
+            num_in_flight++;
+        }
+    }
+    else
+    {
+        auto now = std::chrono::steady_clock::now();
+        std::vector<unique_file_id_t> to_erase;
+        for (auto& [file_id, req] : chunk_requests_)
+        {
+            auto& [num_in_flight, max_in_flight, last_update, requests] = req;
+
+            if (now - last_update > std::chrono::seconds{60})
+            {
+                to_erase.push_back(file_id);
+                continue;
+            }
+
+            if (num_in_flight == 0 && !requests.empty() && max_in_flight < 64)
+            {
+                max_in_flight *= 2;
+            }
+
+            while (num_in_flight < max_in_flight && !requests.empty())
+            {
+                recv_queue_ref_.push(recv_msg_file_chunk_request_t{ file_id, requests.front() });
+                requests.pop();
+                num_in_flight++;
+            }
+        }
+
+        for (auto const& file_id : to_erase)
+        {
+            chunk_requests_.erase(file_id);
+        }
+    }
 }
 
 tox_t::tox_t(tox_config_t const& config)
-    : m_pImpl(std::make_unique<impl_t>(config))
+    : impl_(std::make_unique<impl_t>(config))
 {}
 
 tox_t::~tox_t() noexcept
@@ -511,16 +650,22 @@ tox_t::~tox_t() noexcept
 
 std::shared_ptr<tox_if> tox_t::get_interface()
 {
-    return {};
+    return impl_->if_impl_ptr_;
 }
 
 void tox_t::start()
 {
-    m_pImpl->loop();
+    impl_->loop_thread_ = std::thread([this]() { impl_->loop(); });
 }
 
 void tox_t::stop()
 {
+    impl_->loop_thread_.join();
+}
+
+void tox_t::save()
+{
+    impl_->send_queue_ref_.push(send_msg_savedata_t{});
 }
 
 } // namespace toxfs

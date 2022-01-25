@@ -19,6 +19,21 @@
 
 #pragma once
 
-#include "toxfs/tox/tox_types.hh"
+#include "toxfs/tox/file_types.hh"
 
-#include <array>
+#include <fmt/format.h>
+
+template <>
+struct fmt::formatter<toxfs::tox::unique_file_id_t>
+{
+    constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin())
+    {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(toxfs::tox::unique_file_id_t const& c, FormatContext& ctx)
+    {
+        return fmt::format_to(ctx.out(), "Friend#{}-File#{}", c.friend_id.id, c.file_id.id);
+    }
+};

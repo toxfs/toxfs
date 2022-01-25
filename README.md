@@ -50,39 +50,47 @@ cmake -DDOWNLOAD_DEPS=AUTO ...
 cmake -DDOWNLOAD_DEPS=ALWAYS ...
 ```
 
-## Usage (Proof of Concept)
+## Usage
 
-**WARNING**: This functionality is a experimental hack, use at your own risk.
+**Toxfs is still in the early stages of development, use at your own risk!**
 
-Currently toxfsd can currently connect to a client and initiate a file transfer based on a message.
+Currently toxfsd is functional and can transfer files back and forth based on messages/files from a tox client.
 
-To get started run toxfsd with your Tox address and a directory to serve:
+To start, run toxfsd with the following positional arguments:
+ * 1: Your tox client address which will be used to access this toxfs.
+ * 2: The directory to serve/save files to
+ * 3: Optional, the path to save the tox data.
+   * IMPORTANT: If this is not provided toxfsd will generate a new tox address for itself each time.
 
 ```bash
-$ toxfsd 0E831AAF... /mnt/myshared
+$ toxfsd 0E831AAF... /mnt/myshared /path/to/savedata
 ```
 
 After bootstrapping, toxfsd will display it's own Tox address:
 ```
-[tox/tox.cc:305] INFO: My tox address is: a42c8bedab...
+[tox/tox.cc:348] INFO: My tox address is: a42c8bedab...
 ```
 
 Add toxfsd as a friend, **it will only accept a friend request of the address provided on the command line**.
 
-After successfully friending, then you can send a message: `toxfs-send <file>`.
+After successfully friending, then you can send a message: `send <path>`. The path can be either a file
+or a directory specified as a absolute or relative path to the share. When the path is a directory
+all the contents in the directory and subdirectories will be sent.
 
 ```
 # Absolute
-toxfs-send /mnt/myshared/myfile.txt
+send /mnt/myshared/myfile.txt
 
 # Relative, implies /mnt/myshared/myfile2.txt
-toxfs-send myfile2.txt
+send myfile2.txt
 
 # Fails (currently only logs an error on the console)
-toxfs-send /mnt/notmyshared/notmyfile.txt
+send /mnt/notmyshared/notmyfile.txt
 ```
 
-This will cause toxfsd to initiate a file transfer with your tox client.
+Sending a file to toxfsd will cause it to save the file at the root of the share. If a file with the same name
+already exists, it will be overwritten.
+
 
 ## Dependencies
 

@@ -20,24 +20,14 @@
 add_library(toxfs_common)
 
 target_sources(toxfs_common PRIVATE
-    include/toxfs/version.hh
-    include/toxfs/logging.hh
-    include/toxfs/exception.hh
-    include/toxfs/tox/tox.hh
-    include/toxfs/tox/tox_if.hh
-    include/toxfs/tox/tox_types.hh
-    include/toxfs/tox/tox_error.hh
-    include/toxfs/util/string_helpers.hh
-    include/toxfs/util/compile_utils.hh
-    include/toxfs/util/message_queue.hh
-    include/toxfs/util/filename.hh
-    include_private/toxfs_priv/tox/tox_msg_types.hh
-    include_private/toxfs_priv/cmake_version.hh.in
     src/version.cc
     src/logging.cc
     src/util/string_helpers.cc
+    src/util/chunked_progress.cc
     src/tox/tox.cc
     src/tox/tox_error.cc
+    src/tox/tox_if_impl.cc
+    src/transfer/transfer_ctrl.cc
 )
 
 target_include_directories(toxfs_common
@@ -52,6 +42,7 @@ target_include_directories(toxfs_common
 target_link_libraries(toxfs_common
     PUBLIC
     toxfsdep::GSL
+    pthread
 
     PRIVATE
     toxfsdep::fmt

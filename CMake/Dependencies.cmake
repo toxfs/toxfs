@@ -32,6 +32,8 @@ elseif(DOWNLOAD_DEPS STREQUAL ALWAYS)
     set(_do_download TRUE)
 endif()
 
+set(TOXFS_DEPS)
+
 # ================================
 # pkg-config, needed for finding other modules
 # ================================
@@ -49,6 +51,7 @@ pkg_check_modules(toxcore toxcore>=0.2.10 IMPORTED_TARGET REQUIRED)
 add_library(toxcore::toxcore INTERFACE IMPORTED)
 target_link_libraries(toxcore::toxcore INTERFACE PkgConfig::toxcore)
 set(TOXFS_toxcore_DEP_TYPE "System (${toxcore_VERSION})")
+list(APPEND TOXFS_DEPS toxcore)
 
 # ================================
 # fmtlib
@@ -71,6 +74,7 @@ if(NOT fmt_FOUND AND _do_download)
     target_link_libraries(toxfsdep::fmt INTERFACE fmt)
     set(TOXFS_fmtlib_DEP_TYPE "Downloaded (${TOXFS_FMT_DOWNLOAD_VERSION})")
 endif()
+list(APPEND TOXFS_DEPS fmtlib)
 
 # ================================
 # gsl
@@ -93,10 +97,11 @@ if(NOT Microsoft.GSL_FOUND AND _do_download)
     target_link_libraries(toxfsdep::GSL INTERFACE GSL)
     set(TOXFS_GSL_DEP_TYPE "Downloaded (${TOXFS_GSL_DOWNLOAD_VERSION})")
 endif()
+list(APPEND TOXFS_DEPS GSL)
 
 # Print out all dependencies
 message(STATUS "Toxfs Dependencies Summary:")
-foreach(dep IN ITEMS toxcore fmtlib GSL)
+foreach(dep IN LISTS TOXFS_DEPS)
     message(STATUS "  ${dep}:\t${TOXFS_${dep}_DEP_TYPE}")
 endforeach(dep)
 message(STATUS "End of Toxfs Dependencies Summary")

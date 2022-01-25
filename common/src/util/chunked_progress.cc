@@ -17,49 +17,39 @@
  * along with Toxfs.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include "toxfs/util/chunked_progress.hh"
+#include "toxfs/logging.hh"
 
-/**
- * Tox Interface
- */
-
-#include "toxfs/tox/tox_types.hh"
-#include "toxfs/tox/tox_if.hh"
-
-#include <memory>
-#include <filesystem>
-
-namespace toxfs::tox
+namespace toxfs
 {
 
-struct tox_config_t
+chunked_progress::chunked_progress(uint64_t size)
+    : size_(size)
+    , pos_(0u)
 {
-    address_t local_address{};
-    std::filesystem::path root_dir{};
-    std::filesystem::path save_file{};
-};
+}
 
-class tox_t : public std::enable_shared_from_this<tox_t>
+void chunked_progress::update(uint64_t pos, uint64_t size) noexcept
 {
-public:
-    explicit tox_t(tox_config_t const& config);
+    if (pos <= pos_ && pos + size > pos_)
+    {
+        pos_ = pos + size;
+    }
+    else if (pos > pos_)
+    {
+        TOXFS_LOG_DEBUG("Progress jumped from {} to {}", pos_, pos);
+        pos_ = pos + size;
+    }
+}
 
-    ~tox_t() noexcept;
+uint64_t chunked_progress::progress() const noexcept
+{
+    return pos_;
+}
 
-    /**
-     * @brief Get tox_if
-     */
-    std::shared_ptr<tox_if> get_interface();
+uint64_t chunked_progress::total_size() const noexcept
+{
+    return size_;
+}
 
-    void start();
-
-    void stop();
-
-    void save();
-
-    struct impl_t;
-private:
-    std::unique_ptr<impl_t> impl_;
-};
-
-} // namespace toxfs::tox
+} // namespace toxfs
